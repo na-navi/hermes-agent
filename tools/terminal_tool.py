@@ -1353,6 +1353,73 @@ def _stop_cleanup_thread():
             pass
 
 
+def reconcile_orphaned_sandboxes() -> int:
+    """Reap sandboxes orphaned by a previous gateway process.
+
+    On startup, the in-process ``_active_environments`` dict is empty, so
+    running containers / Daytona sandboxes from a prior gateway lifetime are
+    invisible to the idle reaper. This function does a one-shot sweep of the
+    active backend(s) for stale ``hermes-*`` resources and tears them down.
+
+    Returns the number of orphaned sandboxes removed (#28807).
+    """
+    removed = 0
+    config = _get_env_config()
+    backend = (config.get("backend") or "").strip().lower()
+
+    # --- Docker backend: docker ps --filter name=hermes- ------------------
+    if backend in {"docker", ""}:
+        try:
+            from tools.environments.docker import find_docker
+            docker_bin = find_docker()
+            if docker_bin:
+                result = subprocess.run(
+                    [docker_bin, "ps", "-q", "--filter", "name=hermes-",
+                     "--filter", "status=running"],
+                    capture_output=True, text=True, timeout=15,
+                )
+                for cid in result.stdout.strip().splitlines():
+                    cid = cid.strip()
+                    if not cid:
+                        continue
+                    try:
+                        subprocess.run(
+                            [docker_bin, "stop", cid],
+                            capture_output=True, timeout=30,
+                        )
+                        subprocess.run(
+                            [docker_bin, "rm", "-f", cid],
+                            capture_output=True, timeout=15,
+                        )
+                        removed += 1
+                        logger.info("Reconciled orphaned Docker container: %s", cid)
+                    except Exception as exc:
+                        logger.warning("Failed to stop orphaned container %s: %s", cid, exc)
+        except Exception as exc:
+            logger.debug("Docker reconciliation skipped: %s", exc)
+
+    # --- Daytona backend: list() + delete stale -------------------------
+    if backend == "daytona":
+        try:
+            from daytona import Daytona
+            client = Daytona()
+            for sb in client.list(labels={"hermes_task_id"}):  
+                name = getattr(sb, "name", "") or ""
+                if name.startswith("hermes-"):
+                    try:
+                        sb.delete()
+                        removed += 1
+                        logger.info("Reconciled orphaned Daytona sandbox: %s", name)
+                    except Exception as exc:
+                        logger.warning("Failed to remove orphaned sandbox %s: %s", name, exc)
+        except Exception as exc:
+            logger.debug("Daytona reconciliation skipped: %s", exc)
+
+    if removed:
+        logger.info("Reconciliation reaped %d orphaned sandbox(es)", removed)
+    return removed
+
+
 def get_active_env(task_id: str):
     """Return the active BaseEnvironment for *task_id*, or None."""
     lookup = _resolve_container_task_id(task_id)
