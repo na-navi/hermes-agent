@@ -493,6 +493,10 @@ class TurnController {
 
     if (finalText) {
       finalMessages.push({ role: 'assistant', text: finalText })
+    } else if (split.reasoning && split.reasoning.trim()) {
+      // Entire model output wrapped in reasoning tags (e.g. kimi-k2.6).
+      // Surface reasoning as the answer so the thread doesn't go silent (#28755).
+      finalMessages.push({ role: 'assistant', text: split.reasoning.trim() })
     }
 
     const wasInterrupted = this.interrupted
