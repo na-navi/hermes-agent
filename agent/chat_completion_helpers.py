@@ -60,6 +60,7 @@ from agent.tool_guardrails import (
 )
 from tools.terminal_tool import is_persistent_env
 from utils import base_url_host_matches, base_url_hostname
+from agent.moonshot_schema import is_moonshot_model
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +339,7 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
         base_url_host_matches(agent.base_url, "api.kimi.com")
         or base_url_host_matches(agent.base_url, "moonshot.ai")
         or base_url_host_matches(agent.base_url, "moonshot.cn")
+        or is_moonshot_model(agent.model)
     )
     _is_tokenhub = base_url_host_matches(agent._base_url_lower, "tokenhub.tencentmaas.com")
     _is_lmstudio = (agent.provider or "").strip().lower() == "lmstudio"
