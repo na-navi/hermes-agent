@@ -241,7 +241,12 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     volatile_parts: List[str] = []
 
     if agent._memory_store:
-        if agent._memory_enabled:
+        # When an external memory provider is active and has content,
+        # suppress the built-in memory block to avoid double-injection
+        # (#28796). USER.md is still included — it covers identity, not
+        # accumulated knowledge.
+        _ext_active = bool(agent._memory_manager)
+        if agent._memory_enabled and not _ext_active:
             mem_block = agent._memory_store.format_for_system_prompt("memory")
             if mem_block:
                 volatile_parts.append(mem_block)
