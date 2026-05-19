@@ -1,0 +1,54 @@
+name: Review Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+jobs:
+  check-approvals:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - name: Check minimum approvals
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c379a5dea  # v7.0.1
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const required = 1;
+
+            // Auto-approve if author is the repo owner (na-navi)
+            const owner = context.repo.owner;
+            if (pr.user.login === owner) {
+              core.info(`Repo owner ${owner} is the PR author — auto-pass`);
+              return;
+            }
+
+            // Fetch reviews (latest per reviewer)
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+
+            // Count latest state per reviewer (ignore author's own reviews)
+            const latestByReviewer = new Map();
+            for (const r of reviews) {
+              if (r.user.login === pr.user.login) continue; // skip self-reviews
+              latestByReviewer.set(r.user.login, r.state);
+            }
+
+            const approvals = [...latestByReviewer.values()]
+              .filter(s => s === 'APPROVED').length;
+
+            if (approvals < required) {
+              core.setFailed(
+                `Need at least ${required} approval(s), got ${approvals}. ` +
+                `Please request a review before merging.`
+              );
+            } else {
+              core.info(`Approval check passed: ${approvals}/${required}`);
+            }
