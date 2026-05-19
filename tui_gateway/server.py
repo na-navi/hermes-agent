@@ -882,6 +882,12 @@ def _load_service_tier() -> str | None:
     return None
 
 
+def _load_fallback_model() -> list | dict | None:
+    """Load fallback_model / fallback_providers from config (mirrors gateway)."""
+    cfg = _load_cfg()
+    return cfg.get("fallback_providers") or cfg.get("fallback_model") or None
+
+
 def _load_show_reasoning() -> bool:
     return bool((_load_cfg().get("display") or {}).get("show_reasoning", False))
 
@@ -1848,7 +1854,7 @@ def _background_agent_kwargs(agent, task_id: str) -> dict:
         "request_overrides": dict(getattr(agent, "request_overrides", {}) or {}),
         "platform": "tui",
         "session_db": _get_db(),
-        "fallback_model": getattr(agent, "_fallback_model", None),
+        "fallback_model": getattr(agent, "_fallback_chain", None) or getattr(agent, "_fallback_model", None) or _load_fallback_model(),
     }
 
 
@@ -1922,6 +1928,7 @@ def _make_agent(sid: str, key: str, session_id: str | None = None):
         session_id=session_id or key,
         session_db=_get_db(),
         ephemeral_system_prompt=system_prompt or None,
+        fallback_model=_load_fallback_model(),
         checkpoints_enabled=is_truthy_value(os.environ.get("HERMES_TUI_CHECKPOINTS")),
         pass_session_id=is_truthy_value(os.environ.get("HERMES_TUI_PASS_SESSION_ID")),
         skip_context_files=is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")),
