@@ -247,7 +247,7 @@ def build_top_level_parser():
         "-m", "--model", help="Model to use (e.g., anthropic/claude-sonnet-4)",
     )
     chat_parser.add_argument(
-        "-t", "--toolsets", help="Comma-separated toolsets to enable"
+        "-t", "--toolsets", default=argparse.SUPPRESS, help="Comma-separated toolsets to enable"
     )
     _inherited_flag(
         chat_parser,
