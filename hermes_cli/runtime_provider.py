@@ -557,10 +557,13 @@ def _resolve_named_custom_runtime(
         if pool_result:
             pool_result["source"] = "direct-alias"
             return pool_result
+        # Gate provider-specific keys on the resolved host (#28660)
+        _is_openai_url = base_url_host_matches(base_url, "openai.com")
+        _is_openrouter_url_here = base_url_host_matches(base_url, "openrouter.ai")
         api_key_candidates = [
             (explicit_api_key or "").strip(),
-            os.getenv("OPENAI_API_KEY", "").strip(),
-            os.getenv("OPENROUTER_API_KEY", "").strip(),
+            (os.getenv("OPENAI_API_KEY", "").strip() if _is_openai_url else ""),
+            (os.getenv("OPENROUTER_API_KEY", "").strip() if _is_openrouter_url_here else ""),
         ]
         api_key = next(
             (c for c in api_key_candidates if has_usable_secret(c)),
@@ -596,12 +599,15 @@ def _resolve_named_custom_runtime(
             pool_result["model"] = model_name
         return pool_result
 
+    # Gate provider-specific keys on the resolved host (#28660)
+    _is_openai_url = base_url_host_matches(base_url, "openai.com")
+    _is_openrouter_url_here = base_url_host_matches(base_url, "openrouter.ai")
     api_key_candidates = [
         (explicit_api_key or "").strip(),
         str(custom_provider.get("api_key", "") or "").strip(),
         os.getenv(str(custom_provider.get("key_env", "") or "").strip(), "").strip(),
-        os.getenv("OPENAI_API_KEY", "").strip(),
-        os.getenv("OPENROUTER_API_KEY", "").strip(),
+        (os.getenv("OPENAI_API_KEY", "").strip() if _is_openai_url else ""),
+        (os.getenv("OPENROUTER_API_KEY", "").strip() if _is_openrouter_url_here else ""),
     ]
     api_key = next((candidate for candidate in api_key_candidates if has_usable_secret(candidate)), "")
 
@@ -683,13 +689,17 @@ def _resolve_openrouter_runtime(
         # "ollama.com" (e.g. http://127.0.0.1/ollama.com/v1) or whose
         # hostname is a look-alike (ollama.com.attacker.test) must not
         # receive the Ollama credential. See GHSA-76xc-57q6-vm5m.
+        # Each provider-specific env var is gated on the resolved host
+        # so credentials never leak to an unrelated endpoint (#28660).
         _is_ollama_url = base_url_host_matches(base_url, "ollama.com")
+        _is_openai_url = base_url_host_matches(base_url, "openai.com")
+        _is_openrouter_url_here = base_url_host_matches(base_url, "openrouter.ai")
         api_key_candidates = [
             explicit_api_key,
             (cfg_api_key if use_config_base_url else ""),
             (os.getenv("OLLAMA_API_KEY") if _is_ollama_url else ""),
-            os.getenv("OPENAI_API_KEY"),
-            os.getenv("OPENROUTER_API_KEY"),
+            (os.getenv("OPENAI_API_KEY") if _is_openai_url else ""),
+            (os.getenv("OPENROUTER_API_KEY") if _is_openrouter_url_here else ""),
         ]
     api_key = next(
         (str(candidate or "").strip() for candidate in api_key_candidates if has_usable_secret(candidate)),
