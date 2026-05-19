@@ -2796,6 +2796,11 @@ def _cleanup_workspace(conn: sqlite3.Connection, task_id: str) -> None:
     Best-effort — any error is swallowed so cleanup never blocks task completion.
     Only ``scratch`` workspaces are removed; ``worktree`` and ``dir`` workspaces
     are intentionally preserved.
+
+    Safety guard (#28818): only delete paths that live under a Hermes-managed
+    scratch-workspaces root. If the path points outside (e.g. a real source
+    directory misconfigured as scratch), log a warning and skip deletion.
+    Also refuse to delete any path containing a ``.git`` directory.
     """
     try:
         row = conn.execute(
@@ -2809,10 +2814,28 @@ def _cleanup_workspace(conn: sqlite3.Connection, task_id: str) -> None:
         if kind != "scratch" or not path:
             return
         import shutil
-        wp = Path(path)
-        if wp.is_dir():
-            shutil.rmtree(wp, ignore_errors=True)
-            _log.debug("Removed scratch workspace: %s", wp)
+        wp = Path(path).resolve()
+        if not wp.is_dir():
+            return
+        # Safety: refuse to delete paths with .git (#28818)
+        if (wp / ".git").exists():
+            _log.warning(
+                "Skipping scratch cleanup for %s: contains .git (real repo)", wp
+            )
+            return
+        # Safety: only delete under Hermes-managed scratch root (#28818)
+        scratch_root = scratch_workspaces_dir().resolve()
+        try:
+            wp.relative_to(scratch_root)
+        except ValueError:
+            _log.warning(
+                "Skipping scratch cleanup for %s: outside Hermes scratch root %s",
+                wp,
+                scratch_root,
+            )
+            return
+        shutil.rmtree(wp, ignore_errors=True)
+        _log.debug("Removed scratch workspace: %s", wp)
         # Also kill the tmux session for the worker that owned this task,
         # if the tmux session is now dead (worker process exited).
         _cleanup_worker_tmux(conn, task_id)
