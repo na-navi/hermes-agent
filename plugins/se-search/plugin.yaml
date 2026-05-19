@@ -1,0 +1,9 @@
+name: se-search
+version: 1.0.0
+description: "Override search_files on Windows to use se (Everything + migemo) for file-name lookups. Content search still falls back to rg."
+author: "na-navi"
+platforms:
+  - windows
+provides_tools:
+  - search_files
+hooks: []
