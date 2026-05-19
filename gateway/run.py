@@ -7279,10 +7279,10 @@ class GatewayRunner:
         if canonical == "voice":
             return await self._handle_voice_command(event)
 
-        if self._draining:
-            return f"⏳ Gateway is {self._status_action_gerund()} and is not accepting new work right now."
-
         # User-defined quick commands (bypass agent loop, no LLM call)
+        # MUST be checked BEFORE _draining so exec-type ops commands
+        # (cleanup, restart-sglang, etc.) still execute even when the
+        # gateway is shutting down or draining (#28663).
         if command:
             if isinstance(self.config, dict):
                 quick_commands = self.config.get("quick_commands", {}) or {}
@@ -7333,6 +7333,9 @@ class GatewayRunner:
                         return f"Quick command '/{command}' has no target defined."
                 else:
                     return f"Quick command '/{command}' has unsupported type (supported: 'exec', 'alias')."
+
+        if self._draining:
+            return f"\u23f3 Gateway is {self._status_action_gerund()} and is not accepting new work right now."
 
         # Plugin-registered slash commands
         if command:
